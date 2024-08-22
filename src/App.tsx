@@ -194,6 +194,20 @@ function App() {
           />
         </p>
         <button onClick={clear}>clear</button>
+        <p>
+          Visual demo of <a target="_blank" href="https://github.com/missinglink/s2js">s2js</a>, a pure TypeScript implementation of <a href="http://s2geometry.io" target="_blank">S2 Geometry.</a><br/>
+
+          Draw any region to see its cell covering.<br/>
+
+          Built with <a target="_blank" href="http://terradraw.io">Terra Draw</a>, <a target="_blank" href="http://maplibre.org">MapLibre</a> and <a target="_blank" href="https://github.com/protomaps">Protomaps</a> tiles.
+        </p>
+        <p class="faq">
+         <strong>Why are there gaps between cells?</strong> The visual cells are approximated by trapezoids; in reality they are geodesics, or straight on great circles.
+        </p>
+        <p class="faq">
+         <strong>Why don't the cells cover my region?</strong> The library interprets edges in the input also as geodesics; this can be mitigated by shorter distances between boundary vertices.
+        </p>
+        <a href="https://github.com/bdon/s2js-demos">Fork me on GitHub</a>
       </div>
       <div id="map"></div>
     </div>
