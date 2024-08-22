@@ -160,57 +160,81 @@ function App() {
 
   return (
     <div class="container">
-      <div class="controls">
-        <select
-          onChange={(e) => {
-            if (draw) {
-              draw.setMode(e.target.value);
-            }
-          }}
-        >
-          <option value="rectangle">rectangle mode</option>
-          <option value="polygon">polygon mode</option>
-          <option value="angled-rectangle">angled rectangle mode</option>
-          <option value="circle">circle mode</option>
-        </select>
-        <p>
-          max cells:{" "}
-          <input
-            type="text"
-            value={maxCells()}
-            onInput={(e) => {
-              setMaxCells(+e.target.value || 1);
-            }}
-          />
-        </p>
-        <p>
-          max level:{" "}
-          <input
-            type="text"
-            value={maxLevel()}
-            onInput={(e) => {
-              setMaxLevel(+e.target.value || 1);
-            }}
-          />
-        </p>
-        <button onClick={clear}>clear</button>
-        <p>
-          Visual demo of <a target="_blank" href="https://github.com/missinglink/s2js">s2js</a>, a pure TypeScript implementation of <a href="http://s2geometry.io" target="_blank">S2 Geometry.</a><br/>
 
-          Draw any region to see its cell covering.<br/>
+      <div class="sidebar">
 
-          Built with <a target="_blank" href="http://terradraw.io">Terra Draw</a>, <a target="_blank" href="http://maplibre.org">MapLibre</a> and <a target="_blank" href="https://github.com/protomaps">Protomaps</a> tiles.
-        </p>
-        <p class="faq">
-         <strong>Why are there gaps between cells?</strong> The visual cells are approximated by trapezoids; in reality they are geodesics, or straight on great circles.
-        </p>
-        <p class="faq">
-         <strong>Why don't the cells cover my region?</strong> The library interprets edges in the input also as geodesics; this can be mitigated by shorter distances between boundary vertices.
-        </p>
-        <a href="https://github.com/bdon/s2js-demos">Fork me on GitHub</a>
+        <div class="controls">
+
+          <div class="input">
+            <div class="label">
+              <label>
+                draw mode:
+              </label>
+            </div>
+            <select
+              onChange={(e) => {
+                if (draw) {
+                  draw.setMode(e.target.value);
+                }
+              }}
+            >
+              <option value="rectangle">rectangle mode</option>
+              <option value="polygon">polygon mode</option>
+              <option value="angled-rectangle">angled rectangle mode</option>
+              <option value="circle">circle mode</option>
+            </select>
+          </div>
+
+          <div class="input">
+            <div class="label">
+              <label>
+                max cells:
+              </label>
+            </div>
+            <input
+              type="text"
+              value={maxCells()}
+              onInput={(e) => {
+                setMaxCells(+e.target.value || 1);
+              }}
+            />
+          </div>
+          <div class="input">
+            <div class="label">
+              <label>
+                max level:
+              </label>
+            </div>
+            <input
+              type="text"
+              value={maxLevel()}
+              onInput={(e) => {
+                setMaxLevel(+e.target.value || 1);
+              }}
+            />
+          </div>
+          <button onClick={clear}>clear</button>
+        </div>
+        <div class="text">
+          <h1>s2js Demo</h1>
+          <p>
+            Visual demo of <a target="_blank" href="https://github.com/missinglink/s2js">s2js</a>, a pure TypeScript implementation of <a href="http://s2geometry.io" target="_blank">S2 Geometry.</a><br />
+
+            Draw any region to see its cell covering.<br />
+
+            Built with <a target="_blank" href="http://terradraw.io">Terra Draw</a>, <a target="_blank" href="http://maplibre.org">MapLibre</a> and <a target="_blank" href="https://github.com/protomaps">Protomaps</a> tiles.
+          </p>
+          <p class="faq">
+            <strong>Why are there gaps between cells?</strong> The visual cells are approximated by trapezoids; in reality they are geodesics, or straight on great circles.
+          </p>
+          <p class="faq">
+            <strong>Why don't the cells cover my region?</strong> The library interprets edges in the input also as geodesics; this can be mitigated by shorter distances between boundary vertices.
+          </p>
+          <a href="https://github.com/bdon/s2js-demos">Fork me on GitHub</a>
+        </div>
       </div>
       <div id="map"></div>
-    </div>
+    </div >
   );
 }
 
