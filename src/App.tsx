@@ -107,10 +107,9 @@ function App() {
 
   onMount(() => {
     map = new maplibregl.Map({
-      container: "map", // container id
-      style: "https://demotiles.maplibre.org/style.json", // style URL
-      center: [0, 0], // starting position [lng, lat]
-      zoom: 1, // starting zoom
+      container: "map",
+      style:
+        "https://api.protomaps.com/styles/v3/black.json?key=5b9c1298c2eef269",
       maplibreLogo: true,
     });
 
@@ -144,7 +143,7 @@ function App() {
         type: "fill",
         source: "covering",
         paint: {
-          "fill-color": "steelblue",
+          "fill-color": "yellow",
           "fill-opacity": 0.5,
         },
       });
@@ -153,7 +152,7 @@ function App() {
         type: "line",
         source: "covering",
         paint: {
-          "line-color": "steelblue",
+          "line-color": "yellow",
         },
       });
     });
