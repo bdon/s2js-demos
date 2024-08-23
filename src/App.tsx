@@ -2,7 +2,8 @@ import { createSignal, createEffect, onMount } from "solid-js";
 import "./App.css";
 import maplibregl from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
-import { s2, s1 } from "s2js";
+import { r1, s2, s1 } from "s2js";
+import { point, greatCircle, featureCollection, polygonize } from "@turf/turf";
 import {
   TerraDraw,
   TerraDrawMapLibreGLAdapter,
@@ -13,10 +14,7 @@ import {
 } from "terra-draw";
 import { Polygon, FeatureCollection } from "geojson";
 
-const getPolygonCovering = (
-  regionCoverer: s2.RegionCoverer,
-  polygon: Polygon,
-): s2.CellUnion => {
+const polygonBuilder = (polygon: Polygon): s2.Polygon => {
   const points = [];
   const ring = polygon.coordinates[0]; // TODO assume only the first ring
   for (let i = 0; i < ring.length - 1; i++) {
@@ -25,49 +23,67 @@ const getPolygonCovering = (
   }
   const loop = new s2.Loop(points);
   loop.normalize();
-  const s2poly = s2.Polygon.fromOrientedLoops([loop]);
-  return regionCoverer!.covering(s2poly);
+  return s2.Polygon.fromOrientedLoops([loop]);
 };
 
-const getPolygonsCovering = (
+const rectBuilder = (polygon: Polygon): s2.Rect => {
+  const coords = polygon.coordinates[0]; // TODO assume only the first ring
+  const latLo = Math.min(coords[0][1], coords[2][1]);
+  const lngLo = Math.min(coords[0][0], coords[2][0]);
+  const latHi = Math.max(coords[0][1], coords[2][1]);
+  const lngHi = Math.max(coords[0][0], coords[2][0]);
+
+  const DEGREE = Math.PI / 180;
+  return new s2.Rect(
+    new r1.Interval(latLo * DEGREE, latHi * DEGREE),
+    s1.Interval.fromEndpoints(lngLo * DEGREE, lngHi * DEGREE),
+  );
+};
+
+const getCovering = (
   regionCoverer: s2.RegionCoverer,
   polygons: Polygon[],
+  regionBuilder: { (polygon: Polygon): s2.Region },
 ): s2.CellUnion => {
   return s2.CellUnion.fromUnion(
-    ...polygons.map((p) => getPolygonCovering(regionCoverer, p)),
+    ...polygons.map((p) => regionCoverer!.covering(regionBuilder(p))),
   );
 };
 
 const getCellVisualization = (union: s2.CellUnion): FeatureCollection => {
   const degrees = s1.angle.degrees;
-  let features = union.map((cellid) => {
+  let collections = [...union].map((cellid) => {
     const cell = s2.Cell.fromCellID(cellid);
     const v0 = s2.LatLng.fromPoint(cell.vertex(0));
     const v1 = s2.LatLng.fromPoint(cell.vertex(1));
     const v2 = s2.LatLng.fromPoint(cell.vertex(2));
     const v3 = s2.LatLng.fromPoint(cell.vertex(3));
-    return {
-      type: "Feature" as "Feature",
-      geometry: {
-        type: "Polygon" as "Polygon",
-        coordinates: [
-          [
-            [degrees(v0.lng), degrees(v0.lat)],
-            [degrees(v1.lng), degrees(v1.lat)],
-            [degrees(v2.lng), degrees(v2.lat)],
-            [degrees(v3.lng), degrees(v3.lat)],
-            [degrees(v0.lng), degrees(v0.lat)],
-          ],
-        ],
-      },
-      properties: {
-        level: 0,
-      },
-    };
+
+    const p0 = point([degrees(v0.lng), degrees(v0.lat)]);
+    const p1 = point([degrees(v1.lng), degrees(v1.lat)]);
+    const p2 = point([degrees(v2.lng), degrees(v2.lat)]);
+    const p3 = point([degrees(v3.lng), degrees(v3.lat)]);
+
+    const level = s2.cellid.level(cellid);
+    const npoints = (30 - level) * 5;
+    const arc0 = greatCircle(p0, p1, { npoints });
+    const arc1 = greatCircle(p1, p2, { npoints });
+    const arc2 = greatCircle(p2, p3, { npoints });
+    const arc3 = greatCircle(p3, p0, { npoints });
+
+    let collection = featureCollection([arc0, arc1, arc2, arc3]);
+    try {
+      return polygonize(collection);
+    } catch (e) {
+      console.error("polygonize error");
+      console.error(e);
+    }
+
+    return collection;
   });
   return {
     type: "FeatureCollection",
-    features: features,
+    features: collections.map((c) => c.features).flat(1),
   };
 };
 
@@ -80,11 +96,25 @@ function App() {
   const [maxCells, setMaxCells] = createSignal(200);
 
   const updateCovering = () => {
-    const polygons: Polygon[] = draw!
-      .getSnapshot()
+    const snapshot = draw!.getSnapshot();
+    if (!snapshot.length) return;
+
+    const polygons: Polygon[] = snapshot
       .map((f) => f.geometry)
       .filter((g) => g.type === "Polygon");
-    const covering = getPolygonsCovering(regionCoverer, polygons);
+
+    let covering;
+    switch (snapshot[0].properties.mode) {
+      case "rectangle": {
+        console.error("rectangle covering");
+        covering = getCovering(regionCoverer, polygons, rectBuilder);
+        break;
+      }
+      default: {
+        console.error("polygon covering");
+        covering = getCovering(regionCoverer, polygons, polygonBuilder);
+      }
+    }
     (map!.getSource("covering") as maplibregl.GeoJSONSource).setData(
       getCellVisualization(covering),
     );
@@ -160,11 +190,8 @@ function App() {
 
   return (
     <div class="container">
-
       <div class="sidebar">
-
         <div class="controls">
-
           <div class="input">
             <div class="label">
               <label>
