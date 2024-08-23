@@ -3,7 +3,7 @@ import "./App.css";
 import maplibregl from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
 import { r1, s2, s1 } from "s2js";
-import { point, greatCircle, featureCollection, polygonize } from "@turf/turf";
+import { greatCircle } from "@turf/great-circle";
 import {
   TerraDraw,
   TerraDrawMapLibreGLAdapter,
@@ -12,7 +12,7 @@ import {
   TerraDrawPolygonMode,
   TerraDrawCircleMode,
 } from "terra-draw";
-import { Polygon, FeatureCollection } from "geojson";
+import { Feature, Position, Polygon, FeatureCollection } from "geojson";
 
 const polygonBuilder = (polygon: Polygon): s2.Polygon => {
   const points = [];
@@ -52,37 +52,46 @@ const getCovering = (
 
 const getCellVisualization = (union: s2.CellUnion): FeatureCollection => {
   const degrees = s1.angle.degrees;
-  let collections = [...union].map((cellid) => {
+  let features = [...union].map((cellid): Feature<Polygon> => {
     const cell = s2.Cell.fromCellID(cellid);
     const v0 = s2.LatLng.fromPoint(cell.vertex(0));
     const v1 = s2.LatLng.fromPoint(cell.vertex(1));
     const v2 = s2.LatLng.fromPoint(cell.vertex(2));
     const v3 = s2.LatLng.fromPoint(cell.vertex(3));
 
-    const p0 = point([degrees(v0.lng), degrees(v0.lat)]);
-    const p1 = point([degrees(v1.lng), degrees(v1.lat)]);
-    const p2 = point([degrees(v2.lng), degrees(v2.lat)]);
-    const p3 = point([degrees(v3.lng), degrees(v3.lat)]);
+    const p0 = [degrees(v0.lng), degrees(v0.lat)];
+    const p1 = [degrees(v1.lng), degrees(v1.lat)];
+    const p2 = [degrees(v2.lng), degrees(v2.lat)];
+    const p3 = [degrees(v3.lng), degrees(v3.lat)];
 
-    const level = s2.cellid.level(cellid);
+    const level = cell.level;
     const npoints = (30 - level) * 5;
     const arc0 = greatCircle(p0, p1, { npoints });
     const arc1 = greatCircle(p1, p2, { npoints });
     const arc2 = greatCircle(p2, p3, { npoints });
     const arc3 = greatCircle(p3, p0, { npoints });
 
-    let collection = featureCollection([arc0, arc1, arc2, arc3]);
-    try {
-      return polygonize(collection);
-    } catch (e) {
-      console.error("polygonize error");
-      console.error(e);
-    }
-    return collection;
+    const coordinates = [
+      ...arc0.geometry.coordinates.slice(0, -1),
+      ...arc1.geometry.coordinates.slice(0, -1),
+      ...arc2.geometry.coordinates.slice(0, -1),
+      ...arc3.geometry.coordinates,
+    ] as Position[];
+
+    return {
+      type: "Feature",
+      geometry: {
+        type: "Polygon",
+        coordinates: [coordinates],
+      },
+      properties: {
+        level: cell.level,
+      },
+    };
   });
   return {
     type: "FeatureCollection",
-    features: collections.map((c) => c.features).flat(1),
+    features: features,
   };
 };
 
@@ -225,7 +234,7 @@ function App() {
 
           <div class="input">
             <div class="label">
-              <label>max cells:</label>
+              <label>max cells per shape:</label>
             </div>
             <input
               type="text"
