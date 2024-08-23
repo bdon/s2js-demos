@@ -4,6 +4,8 @@ import maplibregl from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
 import { r1, s2, s1 } from "s2js";
 import { greatCircle } from "@turf/great-circle";
+import { flatten } from "@turf/flatten";
+import { polygonize } from "@turf/polygonize";
 import {
   TerraDraw,
   TerraDrawMapLibreGLAdapter,
@@ -12,7 +14,24 @@ import {
   TerraDrawPolygonMode,
   TerraDrawCircleMode,
 } from "terra-draw";
-import { Feature, Position, Polygon, FeatureCollection } from "geojson";
+import {
+  Feature,
+  Position,
+  Polygon,
+  LineString,
+  FeatureCollection,
+} from "geojson";
+
+const initialUnion = (): s2.CellUnion => {
+  const union = new s2.CellUnion();
+  union.push(s2.cellid.fromFace(0));
+  union.push(s2.cellid.fromFace(1));
+  // union.push(s2.cellid.fromFace(2));
+  union.push(s2.cellid.fromFace(3));
+  union.push(s2.cellid.fromFace(4));
+  // union.push(s2.cellid.fromFace(5));
+  return union;
+};
 
 const polygonBuilder = (polygon: Polygon): s2.Polygon => {
   const points = [];
@@ -50,6 +69,34 @@ const getCovering = (
   );
 };
 
+const fixAntimeridianCrossings = (arcLines: FeatureCollection<LineString>) => {
+  if (arcLines.features.length <= 4) return;
+
+  const antimeridianCrossings: boolean[] = [];
+  let antiCrossed = false;
+
+  // find crossings
+  let last = arcLines.features.at(-1)!.geometry.coordinates.at(-1)!;
+  arcLines.features.forEach((f) => {
+    const first = f.geometry.coordinates.at(0)!;
+    if (
+      (last[0] === 180 && first[0] === -180) ||
+      (last[0] === -180 && first[0] === 180)
+    ) {
+      antiCrossed = !antiCrossed;
+    }
+
+    antimeridianCrossings.push(antiCrossed);
+    last = f.geometry.coordinates.at(-1)!;
+  });
+
+  // fix lats
+  arcLines.features.forEach((f, fi) => {
+    if (!antimeridianCrossings[fi]) return;
+    f.geometry.coordinates.forEach((v) => (v[0] += 360));
+  });
+};
+
 const getCellVisualization = (union: s2.CellUnion): FeatureCollection => {
   const degrees = s1.angle.degrees;
   let features = [...union].map((cellid): Feature<Polygon> => {
@@ -65,18 +112,38 @@ const getCellVisualization = (union: s2.CellUnion): FeatureCollection => {
     const p3 = [degrees(v3.lng), degrees(v3.lat)];
 
     const level = cell.level;
-    const npoints = (30 - level) * 5;
+    const npoints = 20 + (30 - level) * 3;
     const arc0 = greatCircle(p0, p1, { npoints });
     const arc1 = greatCircle(p1, p2, { npoints });
     const arc2 = greatCircle(p2, p3, { npoints });
     const arc3 = greatCircle(p3, p0, { npoints });
 
-    const coordinates = [
-      ...arc0.geometry.coordinates.slice(0, -1),
-      ...arc1.geometry.coordinates.slice(0, -1),
-      ...arc2.geometry.coordinates.slice(0, -1),
-      ...arc3.geometry.coordinates,
-    ] as Position[];
+    const arcLines: FeatureCollection<LineString> = {
+      type: "FeatureCollection",
+      features: [
+        ...flatten(arc0).features,
+        ...flatten(arc1).features,
+        ...flatten(arc2).features,
+        ...flatten(arc3).features,
+      ],
+    };
+
+    fixAntimeridianCrossings(arcLines);
+
+    // const poly = polygonize(arcLines).features[0];
+    // poly.properties = { level: cell.level };
+    // return poly;
+
+    const coordinates = arcLines.features
+      .map((f) => f.geometry.coordinates)
+      .flat(1);
+
+    // const coordinates = [
+    //   ...arc0.features.map((f) => f.geometry.coordinates).flat(1),
+    //   ...arc1.features.map((f) => f.geometry.coordinates).flat(1),
+    //   ...arc2.features.map((f) => f.geometry.coordinates).flat(1),
+    //   ...arc3.features.map((f) => f.geometry.coordinates).flat(1),
+    // ] as Position[];
 
     return {
       type: "Feature",
@@ -146,23 +213,25 @@ function App() {
   onMount(() => {
     let basemapTheme = "white";
     let cellColor = "darkslategray";
-    if (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) {
+    if (
+      window.matchMedia &&
+      window.matchMedia("(prefers-color-scheme: dark)").matches
+    ) {
       basemapTheme = "black";
       cellColor = "yellow";
     }
 
     map = new maplibregl.Map({
       container: "map",
-      style:
-        `https://api.protomaps.com/styles/v3/${basemapTheme}.json?key=5b9c1298c2eef269`,
+      style: `https://api.protomaps.com/styles/v3/${basemapTheme}.json?key=5b9c1298c2eef269`,
       maplibreLogo: true,
     });
 
     const options = {
       styles: {
-        outlineWidth: 0
-      }
-    }
+        outlineWidth: 0,
+      },
+    };
 
     draw = new TerraDraw({
       adapter: new TerraDrawMapLibreGLAdapter({ map, maplibregl }),
@@ -220,6 +289,14 @@ function App() {
           "text-color": cellColor,
         },
       });
+
+      // initialize the view with a predefined union
+      const init = initialUnion();
+      if (init && init.length) {
+        (map!.getSource("covering") as maplibregl.GeoJSONSource).setData(
+          getCellVisualization(init),
+        );
+      }
     });
   });
 
