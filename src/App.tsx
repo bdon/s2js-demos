@@ -144,20 +144,33 @@ function App() {
   };
 
   onMount(() => {
+    let basemapTheme = "white";
+    let cellColor = "darkslategray";
+    if (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) {
+      basemapTheme = "black";
+      cellColor = "yellow";
+    }
+
     map = new maplibregl.Map({
       container: "map",
       style:
-        "https://api.protomaps.com/styles/v3/black.json?key=5b9c1298c2eef269",
+        `https://api.protomaps.com/styles/v3/${basemapTheme}.json?key=5b9c1298c2eef269`,
       maplibreLogo: true,
     });
+
+    const options = {
+      styles: {
+        outlineWidth: 0
+      }
+    }
 
     draw = new TerraDraw({
       adapter: new TerraDrawMapLibreGLAdapter({ map, maplibregl }),
       modes: [
-        new TerraDrawRectangleMode(),
-        new TerraDrawAngledRectangleMode(),
-        new TerraDrawPolygonMode(),
-        new TerraDrawCircleMode(),
+        new TerraDrawRectangleMode(options),
+        new TerraDrawAngledRectangleMode(options),
+        new TerraDrawPolygonMode(options),
+        new TerraDrawCircleMode(options),
       ],
     });
 
@@ -181,7 +194,7 @@ function App() {
         type: "fill",
         source: "covering",
         paint: {
-          "fill-color": "yellow",
+          "fill-color": cellColor,
           "fill-opacity": 0.5,
         },
       });
@@ -190,7 +203,7 @@ function App() {
         type: "line",
         source: "covering",
         paint: {
-          "line-color": "yellow",
+          "line-color": cellColor,
         },
       });
       map.addLayer({
@@ -204,7 +217,7 @@ function App() {
           "text-size": 10,
         },
         paint: {
-          "text-color": "yellow",
+          "text-color": cellColor,
         },
       });
     });
