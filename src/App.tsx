@@ -5,6 +5,7 @@ import "maplibre-gl/dist/maplibre-gl.css";
 import { r1, s2, s1 } from "s2js";
 import { greatCircle } from "@turf/great-circle";
 import { flatten } from "@turf/flatten";
+import { rewind } from "@turf/rewind";
 import {
   TerraDraw,
   TerraDrawMapLibreGLAdapter,
@@ -49,14 +50,14 @@ const initialUnion = (): s2.CellUnion | void => {
 };
 
 const polygonBuilder = (polygon: Polygon): s2.Polygon => {
+  rewind(polygon, { mutate: true });
   const points = [];
   const ring = polygon.coordinates[0]; // TODO assume only the first ring
   for (let i = 0; i < ring.length - 1; i++) {
-    const latlng = s2.LatLng.fromDegrees(ring[i][1], ring[i][0]).normalized();
+    const latlng = s2.LatLng.fromDegrees(ring[i][1], ring[i][0]);
     points.push(s2.Point.fromLatLng(latlng));
   }
   const loop = new s2.Loop(points);
-  loop.normalize();
   return s2.Polygon.fromOrientedLoops([loop]);
 };
 
