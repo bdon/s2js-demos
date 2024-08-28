@@ -460,8 +460,8 @@ function App() {
             tiles.
           </p>
           <p class="faq">
-            <strong>Why don't the cells cover my region?</strong> The library
-            interprets edges in the input also as geodesics; this can be
+            <strong>Why don't the cells seem to cover my region?</strong> The library
+            interprets edges in the input as geodesics; this can be
             mitigated by shorter distances between boundary vertices.
           </p>
           <a href="https://github.com/bdon/s2js-demos">Fork me on GitHub</a>
