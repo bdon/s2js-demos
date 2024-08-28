@@ -21,32 +21,31 @@ import {
   MultiLineString,
 } from "geojson";
 
-const initialUnion = (): s2.CellUnion => {
-  const union = new s2.CellUnion();
+const initialUnion = (): s2.CellUnion | void => {
+  // const union = new s2.CellUnion();
   // union.push(s2.cellid.fromFace(0));
   // union.push(s2.cellid.fromFace(1));
   // union.push(s2.cellid.fromFace(2));
   // union.push(s2.cellid.fromFace(3));
   // union.push(s2.cellid.fromFace(4));
   // union.push(s2.cellid.fromFace(5));
-
-  // union.push(2985886552946638848n);
-  // union.push(3008404551083491328n);
-  // union.push(3098476543630901248n);
-  // union.push(7710162562058289152n);
-  // union.push(7854277750134145024n);
-  // union.push(8286623314361712640n);
-  // union.push(11957057010668666880n);
-  // union.push(11979575008805519360n);
-  // union.push(12087661399862411264n);
-  // union.push(12393906174523604992n);
-  // union.push(5719853001737240576n);
-  // union.push(5476377146882523136n);
-  // union.push(4899916394579099648n);
-  // union.push(s2.cellid.fromToken("5b"));
-  // union.push(s2.cellid.fromToken("a4"));
-  // union.push(s2.cellid.fromToken("4c"));
-  return union;
+  // // union.push(2985886552946638848n);
+  // // union.push(3008404551083491328n);
+  // // union.push(3098476543630901248n);
+  // // union.push(7710162562058289152n);
+  // // union.push(7854277750134145024n);
+  // // union.push(8286623314361712640n);
+  // // union.push(11957057010668666880n);
+  // // union.push(11979575008805519360n);
+  // // union.push(12087661399862411264n);
+  // // union.push(12393906174523604992n);
+  // // union.push(5719853001737240576n);
+  // // union.push(5476377146882523136n);
+  // // union.push(4899916394579099648n);
+  // // union.push(s2.cellid.fromToken("5b"));
+  // // union.push(s2.cellid.fromToken("a4"));
+  // // union.push(s2.cellid.fromToken("4c"));
+  // return union;
 };
 
 const polygonBuilder = (polygon: Polygon): s2.Polygon => {
@@ -85,7 +84,11 @@ const getCovering = (
   );
 };
 
-const wrapAntimeridianCrossings = (arcLines: FeatureCollection<LineString>) => {
+// We adjust the lines from great-circle to have lng > 180 and < -180 so that
+// the polygons render correctly.
+const overflowAntimeridianCrossings = (
+  arcLines: FeatureCollection<LineString>,
+) => {
   if (arcLines.features.length <= 4) return;
 
   const antimeridianCrossings: boolean[] = [];
@@ -113,7 +116,16 @@ const wrapAntimeridianCrossings = (arcLines: FeatureCollection<LineString>) => {
   });
 };
 
-const fixPolarFaces = (arcs: Feature<LineString | MultiLineString>[]) => {
+// The 'top' and 'bottom' faces are special-cased since all all points have equal lat.
+// we add in an additional line segment so the top and bottom of the planar map are covered
+// by the polygon.
+const fixPolarFaces = (
+  cellid: bigint,
+  arcs: Feature<LineString | MultiLineString>[],
+) => {
+  const POLAR_FACES = [s2.cellid.fromFace(2), s2.cellid.fromFace(5)];
+  if (!POLAR_FACES.includes(cellid)) return;
+
   arcs.forEach((arc: Feature<LineString | MultiLineString>) => {
     if (arc.geometry.type === "MultiLineString") {
       const A = arc.geometry.coordinates[0].at(-1)!;
@@ -137,12 +149,15 @@ const fixPolarFaces = (arcs: Feature<LineString | MultiLineString>[]) => {
   });
 };
 
+// When drawing to a pole the lng is not relevant, we borrow it from the previous point
+// to avoid line drawing issues.
 const fixPoles = (points: number[][]) => {
   points.forEach((p, i) => {
     if (Math.abs(p[1]) === 90) p[0] = points.at(i - 1)![0];
   });
 };
 
+//The great-circle lib can sometimes use -180 lng instead of +180 and vice-versa
 const fixFalseAntimeridianCrossings = (points: number[][]) => {
   const exterior = points.filter((p) => Math.abs(p[0]) === 180);
   if (exterior.length !== 2) return;
@@ -153,6 +168,19 @@ const fixFalseAntimeridianCrossings = (points: number[][]) => {
   if (Math.sign(interior[0][0]) !== Math.sign(interior[1][0])) return;
 
   exterior.forEach((p) => (p[0] = Math.sign(interior[0][0]) * 180));
+};
+
+// The great-circle lib can generate a linestring with two identical points, remove them.
+const removeRedundantArcs = (arcs: Feature<LineString | MultiLineString>[]) => {
+  arcs.forEach((arc: Feature<LineString | MultiLineString>) => {
+    if (arc.geometry.type !== "MultiLineString") return;
+    if (arc.geometry.coordinates.length !== 2) return;
+    arc.geometry.coordinates = arc.geometry.coordinates.filter((ls) => {
+      if (ls.length !== 2) return true;
+      if (ls[0][0] === ls[1][0] && ls[0][1] === ls[1][1]) return false;
+      return true;
+    });
+  });
 };
 
 const getCellVisualization = (union: s2.CellUnion): FeatureCollection => {
@@ -172,22 +200,6 @@ const getCellVisualization = (union: s2.CellUnion): FeatureCollection => {
     fixPoles([p0, p1, p2, p3]);
     fixFalseAntimeridianCrossings([p0, p1, p2, p3]);
 
-    // console.log(p0, p1, p2, p3);
-
-    // if ([p0, p1, p2, p3].filter((p) => !p[0]).length % 2 !== 0) {
-    //   console.log("potential line drawing issue", cellid);
-    //   console.log(p0, p1, p2, p3);
-    // }
-
-    // if (
-    //   [p0, p1, p2, p3].filter(
-    //     (p) => Math.abs(p[0]) === 180 && Math.abs(p[1]) === 90,
-    //   ).length
-    // ) {
-    //   console.log("potential pole issue", cellid);
-    //   console.log(p0, p1, p2, p3);
-    // }
-
     const level = cell.level;
     const npoints = 20 + (30 - level) * 3;
     const arc0 = greatCircle(p0, p1, { npoints });
@@ -195,28 +207,8 @@ const getCellVisualization = (union: s2.CellUnion): FeatureCollection => {
     const arc2 = greatCircle(p2, p3, { npoints });
     const arc3 = greatCircle(p3, p0, { npoints });
 
-    const removeRedundantArcs = (
-      arcs: Feature<LineString | MultiLineString>[],
-    ) => {
-      arcs.forEach((arc: Feature<LineString | MultiLineString>) => {
-        if (arc.geometry.type !== "MultiLineString") return;
-        if (arc.geometry.coordinates.length !== 2) return;
-        arc.geometry.coordinates = arc.geometry.coordinates.filter((ls) => {
-          if (ls.length !== 2) return true;
-          if (ls[0][0] === ls[1][0] && ls[0][1] === ls[1][1]) return false;
-          return true;
-        });
-      });
-    };
-
     removeRedundantArcs([arc0, arc1, arc2, arc3]);
-
-    // console.log(arc0, arc1, arc2, arc3);
-    // planar hacks for the two polar faces
-    const POLAR_FACES = [s2.cellid.fromFace(2), s2.cellid.fromFace(5)];
-    if (POLAR_FACES.includes(cellid)) {
-      fixPolarFaces([arc0, arc1, arc2, arc3]);
-    }
+    fixPolarFaces(cellid, [arc0, arc1, arc2, arc3]);
 
     const arcLines: FeatureCollection<LineString> = {
       type: "FeatureCollection",
@@ -228,10 +220,7 @@ const getCellVisualization = (union: s2.CellUnion): FeatureCollection => {
       ],
     };
 
-    // fixes;
-    if (!POLAR_FACES.includes(cellid)) {
-      wrapAntimeridianCrossings(arcLines);
-    }
+    overflowAntimeridianCrossings(arcLines);
 
     const coordinates = arcLines.features
       .map((f) => f.geometry.coordinates)
