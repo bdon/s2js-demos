@@ -76,11 +76,16 @@ const rectBuilder = (polygon: Polygon): s2.Rect => {
 
 const getCovering = (
   regionCoverer: s2.RegionCoverer,
-  polygons: Polygon[],
-  regionBuilder: { (polygon: Polygon): s2.Region },
+  features: Feature<Polygon>[],
 ): s2.CellUnion => {
   return s2.CellUnion.fromUnion(
-    ...polygons.map((p) => regionCoverer!.covering(regionBuilder(p))),
+    ...features.map((f) => {
+      if (f.properties!.mode === "rectangle") {
+        return regionCoverer!.covering(rectBuilder(f.geometry));
+      } else {
+        return regionCoverer!.covering(polygonBuilder(f.geometry));
+      }
+    }),
   );
 };
 
@@ -259,23 +264,9 @@ function App() {
   const [drawMode, setDrawMode] = createSignal("");
 
   const updateCovering = () => {
-    const snapshot = draw!.getSnapshot();
-    if (!snapshot.length) return;
+    const snapshot = draw!.getSnapshot() as Feature<Polygon>[];
 
-    const polygons: Polygon[] = snapshot
-      .map((f) => f.geometry)
-      .filter((g) => g.type === "Polygon");
-
-    let covering;
-    switch (snapshot[0].properties.mode) {
-      case "rectangle": {
-        covering = getCovering(regionCoverer, polygons, rectBuilder);
-        break;
-      }
-      default: {
-        covering = getCovering(regionCoverer, polygons, polygonBuilder);
-      }
-    }
+    const covering = getCovering(regionCoverer, snapshot);
     (map!.getSource("covering") as maplibregl.GeoJSONSource).setData(
       getCellVisualization(covering),
     );
@@ -389,7 +380,7 @@ function App() {
         },
       });
 
-      let hoveredCellId:string | number | undefined;
+      let hoveredCellId: string | number | undefined;
 
       map.on("mousemove", "covering-fill", (e) => {
         if (e.features && e.features.length > 0) {
