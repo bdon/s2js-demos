@@ -300,10 +300,13 @@ function App() {
       );
 
       displayCovering(covering);
-      map.fitBounds([
-        [s1.angle.degrees(rect.lng.lo), s1.angle.degrees(rect.lat.lo)],
-        [s1.angle.degrees(rect.lng.hi), s1.angle.degrees(rect.lat.hi)],
-      ]);
+      map.fitBounds(
+        [
+          [s1.angle.degrees(rect.lng.lo), s1.angle.degrees(rect.lat.lo)],
+          [s1.angle.degrees(rect.lng.hi), s1.angle.degrees(rect.lat.hi)],
+        ],
+        { padding: 50 },
+      );
       setLoadError("");
     } catch (e: any) {
       setLoadError(e.message);
