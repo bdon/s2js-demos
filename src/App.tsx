@@ -162,7 +162,7 @@ const fixPoles = (points: number[][]) => {
   });
 };
 
-//The great-circle lib can sometimes use -180 lng instead of +180 and vice-versa
+// The great-circle lib can sometimes use -180 lng instead of +180 and vice-versa
 const fixFalseAntimeridianCrossings = (points: number[][]) => {
   const exterior = points.filter((p) => Math.abs(p[0]) === 180);
   if (exterior.length !== 2) return;
@@ -197,16 +197,16 @@ const getCellVisualization = (union: s2.CellUnion): FeatureCollection => {
     const v2 = s2.LatLng.fromPoint(cell.vertex(2));
     const v3 = s2.LatLng.fromPoint(cell.vertex(3));
 
-    const p0 = [degrees(v0.lng) || 0, degrees(v0.lat) || 0];
-    const p1 = [degrees(v1.lng) || 0, degrees(v1.lat) || 0];
-    const p2 = [degrees(v2.lng) || 0, degrees(v2.lat) || 0];
-    const p3 = [degrees(v3.lng) || 0, degrees(v3.lat) || 0];
+    const p0 = [degrees(v0.lng), degrees(v0.lat)];
+    const p1 = [degrees(v1.lng), degrees(v1.lat)];
+    const p2 = [degrees(v2.lng), degrees(v2.lat)];
+    const p3 = [degrees(v3.lng), degrees(v3.lat)];
 
     fixPoles([p0, p1, p2, p3]);
     fixFalseAntimeridianCrossings([p0, p1, p2, p3]);
 
     const level = cell.level;
-    const npoints = 20 + (30 - level) * 3;
+    const npoints = 20 + (30 - level) * 3; // more interpolated points for larger cells
     const arc0 = greatCircle(p0, p1, { npoints });
     const arc1 = greatCircle(p1, p2, { npoints });
     const arc2 = greatCircle(p2, p3, { npoints });
@@ -326,6 +326,7 @@ function App() {
   const clear = () => {
     draw.clear();
     computeCoveringForDraw();
+    startDrawMode("rectangle");
   };
 
   const startDrawMode = (mode: string) => {
@@ -442,7 +443,7 @@ function App() {
             { hover: true },
           );
         }
-        map.getCanvas().style.cursor = "pointer";
+        map.getCanvas().style.cursor = drawMode() === "render" ? "pointer" : "";
       });
 
       map.on("mouseleave", "covering-fill", () => {
