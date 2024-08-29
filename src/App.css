@@ -66,7 +66,35 @@ h1 {
   align-self: center;
 }
 
+.draw {
+  display: flex;
+  justify-content: space-around;
+  margin-bottom: 20px;
+}
 
+button.active {
+  background-color: darkslategray;
+  color: white;
+}
+
+@media (prefers-color-scheme: dark) {
+  button.active {
+    background-color: yellow;
+    color: black;
+  }
+
+  .maplibregl-popup-content {
+    background: #242424;
+  }
+
+  .maplibregl-popup-anchor-bottom .maplibregl-popup-tip {
+    border-top-color: #242424;
+  }
+
+  .maplibregl-popup-anchor-top .maplibregl-popup-tip {
+    border-bottom-color: #242424;
+  }
+}
 
 @media screen and (max-width: 768px) {
   .container {

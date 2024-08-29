@@ -1,7 +1,7 @@
 import { createSignal, createEffect, onMount } from "solid-js";
+import "maplibre-gl/dist/maplibre-gl.css";
 import "./App.css";
 import maplibregl from "maplibre-gl";
-import "maplibre-gl/dist/maplibre-gl.css";
 import { r1, s2, s1 } from "s2js";
 import { greatCircle } from "@turf/great-circle";
 import { flatten } from "@turf/flatten";
@@ -10,9 +10,8 @@ import {
   TerraDraw,
   TerraDrawMapLibreGLAdapter,
   TerraDrawRectangleMode,
-  TerraDrawAngledRectangleMode,
   TerraDrawPolygonMode,
-  TerraDrawCircleMode,
+  TerraDrawRenderMode,
 } from "terra-draw";
 import {
   Feature,
@@ -227,8 +226,11 @@ const getCellVisualization = (union: s2.CellUnion): FeatureCollection => {
       .map((f) => f.geometry.coordinates)
       .flat(1);
 
+    const center = s2.LatLng.fromPoint(cell.center());
+
     return {
       type: "Feature",
+      id: cell.id.toString(),
       geometry: {
         type: "Polygon",
         coordinates: [coordinates],
@@ -236,6 +238,8 @@ const getCellVisualization = (union: s2.CellUnion): FeatureCollection => {
       properties: {
         level: cell.level,
         token: s2.cellid.toToken(cell.id),
+        centerLng: s1.angle.degrees(center.lng),
+        centerLat: s1.angle.degrees(center.lat),
       },
     };
   });
@@ -252,6 +256,7 @@ function App() {
 
   const [maxLevel, setMaxLevel] = createSignal(30);
   const [maxCells, setMaxCells] = createSignal(200);
+  const [drawMode, setDrawMode] = createSignal("");
 
   const updateCovering = () => {
     const snapshot = draw!.getSnapshot();
@@ -264,12 +269,10 @@ function App() {
     let covering;
     switch (snapshot[0].properties.mode) {
       case "rectangle": {
-        console.info("rectangle covering");
         covering = getCovering(regionCoverer, polygons, rectBuilder);
         break;
       }
       default: {
-        console.info("polygon covering");
         covering = getCovering(regionCoverer, polygons, polygonBuilder);
       }
     }
@@ -291,6 +294,13 @@ function App() {
   const clear = () => {
     draw.clear();
     updateCovering();
+  };
+
+  const startDrawMode = (mode: string) => {
+    if (draw) {
+      draw.setMode(mode);
+      setDrawMode(mode);
+    }
   };
 
   onMount(() => {
@@ -320,18 +330,19 @@ function App() {
       adapter: new TerraDrawMapLibreGLAdapter({ map, maplibregl }),
       modes: [
         new TerraDrawRectangleMode(options),
-        new TerraDrawAngledRectangleMode(options),
+        new TerraDrawRenderMode({ modeName: "render", styles: {} }),
         new TerraDrawPolygonMode(options),
-        new TerraDrawCircleMode(options),
       ],
     });
 
     draw.on("finish", () => {
+      startDrawMode("render");
       updateCovering();
     });
 
     draw.start();
-    draw.setMode("rectangle");
+
+    startDrawMode("rectangle");
 
     map.on("load", () => {
       map.addSource("covering", {
@@ -347,7 +358,12 @@ function App() {
         source: "covering",
         paint: {
           "fill-color": cellColor,
-          "fill-opacity": 0.5,
+          "fill-opacity": [
+            "case",
+            ["boolean", ["feature-state", "hover"], false],
+            0.7,
+            0.5,
+          ],
         },
       });
       map.addLayer({
@@ -373,6 +389,52 @@ function App() {
         },
       });
 
+      let hoveredCellId:string | number | undefined;
+
+      map.on("mousemove", "covering-fill", (e) => {
+        if (e.features && e.features.length > 0) {
+          if (hoveredCellId) {
+            map.setFeatureState(
+              { source: "covering", id: hoveredCellId },
+              { hover: false },
+            );
+          }
+          hoveredCellId = e.features[0].id;
+          map.setFeatureState(
+            { source: "covering", id: hoveredCellId },
+            { hover: true },
+          );
+        }
+        map.getCanvas().style.cursor = "pointer";
+      });
+
+      map.on("mouseleave", "covering-fill", () => {
+        map.getCanvas().style.cursor = "";
+      });
+
+      map.on("click", "covering-fill", (e) => {
+        if (!e || !e.features || e.features.length === 0) return;
+        const properties = e.features[0].properties;
+        const coordinates = {
+          lng: properties.centerLng,
+          lat: properties.centerLat,
+        };
+
+        while (Math.abs(e.lngLat.lng - coordinates.lng) > 180) {
+          coordinates.lng += e.lngLat.lng > coordinates.lng ? 360 : -360;
+        }
+
+        new maplibregl.Popup({ closeButton: false })
+          .setLngLat(coordinates)
+          .setHTML(
+            `<div>
+              <div>Level ${properties.level}</div>
+              <div>${properties.token}</div>
+            </div>`,
+          )
+          .addTo(map);
+      });
+
       // initialize the view with a predefined union
       const init = initialUnion();
       if (init && init.length) {
@@ -387,24 +449,21 @@ function App() {
     <div class="container">
       <div class="sidebar">
         <div class="controls">
-          <div class="input">
-            <div class="label">
-              <label>draw mode:</label>
-            </div>
-            <select
-              onChange={(e) => {
-                if (draw) {
-                  draw.setMode(e.target.value);
-                }
-              }}
+          <div class="draw">
+            <button
+              class={drawMode() === "rectangle" ? "active" : ""}
+              onClick={() => startDrawMode("rectangle")}
             >
-              <option value="rectangle">rectangle mode</option>
-              <option value="polygon">polygon mode</option>
-              <option value="angled-rectangle">angled rectangle mode</option>
-              <option value="circle">circle mode</option>
-            </select>
+              Draw Rectangle
+            </button>
+            <button
+              class={drawMode() === "polygon" ? "active" : ""}
+              onClick={() => startDrawMode("polygon")}
+            >
+              Draw Polygon
+            </button>
+            <button onClick={clear}>Clear</button>
           </div>
-
           <div class="input">
             <div class="label">
               <label>max cells per shape:</label>
@@ -429,7 +488,6 @@ function App() {
               }}
             />
           </div>
-          <button onClick={clear}>clear</button>
         </div>
         <div class="text">
           <h1>s2js Demo</h1>
@@ -460,8 +518,8 @@ function App() {
             tiles.
           </p>
           <p class="faq">
-            <strong>Why don't the cells seem to cover my region?</strong> The library
-            interprets edges in the input as geodesics; this can be
+            <strong>Why don't the cells seem to cover my region?</strong> The
+            library interprets edges in the input as geodesics; this can be
             mitigated by shorter distances between boundary vertices.
           </p>
           <a href="https://github.com/bdon/s2js-demos">Fork me on GitHub</a>
