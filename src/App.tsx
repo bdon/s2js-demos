@@ -343,6 +343,11 @@ function App() {
       cellColor = "yellow";
     }
 
+    maplibregl.setRTLTextPlugin(
+      "https://unpkg.com/@mapbox/mapbox-gl-rtl-text@0.2.3/mapbox-gl-rtl-text.min.js",
+      true,
+    );
+
     map = new maplibregl.Map({
       container: "map",
       style: `https://api.protomaps.com/styles/v3/${basemapTheme}.json?key=5b9c1298c2eef269`,
