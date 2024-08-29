@@ -1,5 +1,7 @@
 # s2js-demos
 
+![preview image](https://repository-images.githubusercontent.com/845997327/7e599557-900c-4687-8aaf-bd104040735e)
+
 Interactive visual demonstration of [s2js](https://github.com/missinglink/s2js), a pure-JS port of [S2 Geometry](https://s2geometry.org).
 
 ```sh
