@@ -77,6 +77,20 @@ button.active {
   color: white;
 }
 
+textarea {
+  padding: 0px;
+  border: none;
+  width: 100%;
+  margin-top: 10px;
+}
+
+.textarealabel {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: .7rem;
+}
+
 @media (prefers-color-scheme: dark) {
   button.active {
     background-color: yellow;

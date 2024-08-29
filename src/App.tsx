@@ -262,14 +262,52 @@ function App() {
   const [maxLevel, setMaxLevel] = createSignal(30);
   const [maxCells, setMaxCells] = createSignal(200);
   const [drawMode, setDrawMode] = createSignal("");
+  const [cellUnionText, setCellUnionText] = createSignal("");
+  const [cellUnionLength, setCellUnionLength] = createSignal(0);
+  const [loadError, setLoadError] = createSignal("");
+  let textArea: HTMLTextAreaElement | undefined;
 
-  const updateCovering = () => {
+  const computeCoveringForDraw = () => {
     const snapshot = draw!.getSnapshot() as Feature<Polygon>[];
 
     const covering = getCovering(regionCoverer, snapshot);
+    displayCovering(covering);
+  };
+
+  const displayCovering = (covering: s2.CellUnion) => {
     (map!.getSource("covering") as maplibregl.GeoJSONSource).setData(
       getCellVisualization(covering),
     );
+
+    setCellUnionText([...covering].map((c) => s2.cellid.toToken(c)).join(", "));
+    setCellUnionLength(covering.length);
+  };
+
+  const loadCoveringFromText = () => {
+    let rect = s2.Rect.emptyRect();
+
+    draw.clear();
+    if (!textArea) return;
+
+    try {
+      const covering = new s2.CellUnion(
+        ...textArea.value.split(", ").map((token) => {
+          const cellid = s2.cellid.fromToken(token);
+          const cell = s2.Cell.fromCellID(cellid);
+          rect = rect.union(cell.rectBound());
+          return cellid;
+        }),
+      );
+
+      displayCovering(covering);
+      map.fitBounds([
+        [s1.angle.degrees(rect.lng.lo), s1.angle.degrees(rect.lat.lo)],
+        [s1.angle.degrees(rect.lng.hi), s1.angle.degrees(rect.lat.hi)],
+      ]);
+      setLoadError("");
+    } catch (e: any) {
+      setLoadError(e.message);
+    }
   };
 
   createEffect(() => {
@@ -278,13 +316,13 @@ function App() {
       maxCells: maxCells(),
     });
     if (draw) {
-      updateCovering();
+      computeCoveringForDraw();
     }
   });
 
   const clear = () => {
     draw.clear();
-    updateCovering();
+    computeCoveringForDraw();
   };
 
   const startDrawMode = (mode: string) => {
@@ -328,7 +366,7 @@ function App() {
 
     draw.on("finish", () => {
       startDrawMode("render");
-      updateCovering();
+      computeCoveringForDraw();
     });
 
     draw.start();
@@ -478,6 +516,15 @@ function App() {
                 setMaxLevel(+e.target.value || 1);
               }}
             />
+          </div>
+          <textarea ref={textArea} rows="5" value={cellUnionText()}></textarea>
+          <div class="textarealabel">
+            {loadError() ? (
+              <span>{loadError()}</span>
+            ) : (
+              <span>{cellUnionLength()} cells</span>
+            )}
+            <button onClick={loadCoveringFromText}>Load Text</button>
           </div>
         </div>
         <div class="text">
