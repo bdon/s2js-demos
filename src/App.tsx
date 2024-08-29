@@ -481,6 +481,37 @@ function App() {
         );
       }
     });
+
+    // secret paste polygon from clipboard command
+    var keyMap: { [name: string]: boolean } = {};
+    window.onkeydown = window.onkeyup = async (e) => {
+      keyMap[e.code] = e.type == "keydown";
+      if (e.type != "keydown") return;
+
+      // cntrl + shift + v
+      if (Object.keys(keyMap).length !== 3) return;
+      if (!keyMap["ControlLeft"] || !keyMap["ShiftLeft"] || !keyMap["KeyV"]) {
+        return;
+      }
+
+      try {
+        console.error("secret keyboard shortcut activated!!");
+        if (!navigator?.clipboard) throw new Error("clipboard API unavailable");
+        const clip = await navigator.clipboard.readText();
+        const polygon = JSON.parse(clip);
+        if (polygon?.type !== "Feature") {
+          throw new Error("invalid feature");
+        }
+        if (polygon?.geometry?.type !== "Polygon") {
+          throw new Error("invalid polygon");
+        }
+        const covering = getCovering(regionCoverer, [polygon]);
+        displayCovering(covering);
+      } catch (e) {
+        console.error("clipboard paste failed");
+        console.error(e);
+      }
+    };
   });
 
   return (
