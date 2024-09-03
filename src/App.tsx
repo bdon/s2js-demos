@@ -2,10 +2,9 @@ import { createSignal, createEffect, onMount } from "solid-js";
 import "maplibre-gl/dist/maplibre-gl.css";
 import "./App.css";
 import maplibregl from "maplibre-gl";
-import { r1, s2, s1 } from "s2js";
+import { s1, s2, geojson } from "s2js";
 import { greatCircle } from "@turf/great-circle";
 import { flatten } from "@turf/flatten";
-import { rewind } from "@turf/rewind";
 import {
   TerraDraw,
   TerraDrawMapLibreGLAdapter,
@@ -19,6 +18,7 @@ import {
   LineString,
   FeatureCollection,
   MultiLineString,
+  Position,
 } from "geojson";
 
 const initialUnion = (): s2.CellUnion | void => {
@@ -48,44 +48,12 @@ const initialUnion = (): s2.CellUnion | void => {
   // return union;
 };
 
-const polygonBuilder = (polygon: Polygon): s2.Polygon => {
-  rewind(polygon, { mutate: true });
-  const points = [];
-  const ring = polygon.coordinates[0]; // TODO assume only the first ring
-  for (let i = 0; i < ring.length - 1; i++) {
-    const latlng = s2.LatLng.fromDegrees(ring[i][1], ring[i][0]);
-    points.push(s2.Point.fromLatLng(latlng));
-  }
-  const loop = new s2.Loop(points);
-  return s2.Polygon.fromOrientedLoops([loop]);
-};
-
-const rectBuilder = (polygon: Polygon): s2.Rect => {
-  const coords = polygon.coordinates[0]; // TODO assume only the first ring
-  const latLo = Math.min(coords[0][1], coords[2][1]);
-  const lngLo = Math.min(coords[0][0], coords[2][0]);
-  const latHi = Math.max(coords[0][1], coords[2][1]);
-  const lngHi = Math.max(coords[0][0], coords[2][0]);
-
-  const DEGREE = Math.PI / 180;
-  return new s2.Rect(
-    new r1.Interval(latLo * DEGREE, latHi * DEGREE),
-    s1.Interval.fromEndpoints(lngLo * DEGREE, lngHi * DEGREE),
-  );
-};
-
 const getCovering = (
-  regionCoverer: s2.RegionCoverer,
-  features: Feature<Polygon>[],
+  coverer: geojson.RegionCoverer,
+  features: Feature[],
 ): s2.CellUnion => {
   return s2.CellUnion.fromUnion(
-    ...features.map((f) => {
-      if (f.properties!.mode === "rectangle") {
-        return regionCoverer!.covering(rectBuilder(f.geometry));
-      } else {
-        return regionCoverer!.covering(polygonBuilder(f.geometry));
-      }
-    }),
+    ...features.map((f) => coverer.covering(f.geometry)),
   );
 };
 
@@ -156,14 +124,14 @@ const fixPolarFaces = (
 
 // When drawing to a pole the lng is not relevant, we borrow it from the previous point
 // to avoid line drawing issues.
-const fixPoles = (points: number[][]) => {
+const fixPoles = (points: Position[]) => {
   points.forEach((p, i) => {
     if (Math.abs(p[1]) === 90) p[0] = points.at(i - 1)![0];
   });
 };
 
 // The great-circle lib can sometimes use -180 lng instead of +180 and vice-versa
-const fixFalseAntimeridianCrossings = (points: number[][]) => {
+const fixFalseAntimeridianCrossings = (points: Position[]) => {
   const exterior = points.filter((p) => Math.abs(p[0]) === 180);
   if (exterior.length !== 2) return;
   if (Math.sign(exterior[0][0]) !== Math.sign(exterior[1][0])) return;
@@ -189,28 +157,20 @@ const removeRedundantArcs = (arcs: Feature<LineString | MultiLineString>[]) => {
 };
 
 const getCellVisualization = (union: s2.CellUnion): FeatureCollection => {
-  const degrees = s1.angle.degrees;
   let features = [...union].map((cellid): Feature<Polygon> => {
     const cell = s2.Cell.fromCellID(cellid);
-    const v0 = s2.LatLng.fromPoint(cell.vertex(0));
-    const v1 = s2.LatLng.fromPoint(cell.vertex(1));
-    const v2 = s2.LatLng.fromPoint(cell.vertex(2));
-    const v3 = s2.LatLng.fromPoint(cell.vertex(3));
+    const poly = geojson.toGeoJSON(cell) as Polygon;
+    const ring = poly.coordinates[0];
 
-    const p0 = [degrees(v0.lng), degrees(v0.lat)];
-    const p1 = [degrees(v1.lng), degrees(v1.lat)];
-    const p2 = [degrees(v2.lng), degrees(v2.lat)];
-    const p3 = [degrees(v3.lng), degrees(v3.lat)];
-
-    fixPoles([p0, p1, p2, p3]);
-    fixFalseAntimeridianCrossings([p0, p1, p2, p3]);
+    fixPoles([ring[0], ring[1], ring[2], ring[3]]);
+    fixFalseAntimeridianCrossings([ring[0], ring[1], ring[2], ring[3]]);
 
     const level = cell.level;
     const npoints = 20 + (30 - level) * 3; // more interpolated points for larger cells
-    const arc0 = greatCircle(p0, p1, { npoints });
-    const arc1 = greatCircle(p1, p2, { npoints });
-    const arc2 = greatCircle(p2, p3, { npoints });
-    const arc3 = greatCircle(p3, p0, { npoints });
+    const arc0 = greatCircle(ring[0], ring[1], { npoints });
+    const arc1 = greatCircle(ring[1], ring[2], { npoints });
+    const arc2 = greatCircle(ring[2], ring[3], { npoints });
+    const arc3 = greatCircle(ring[3], ring[0], { npoints });
 
     removeRedundantArcs([arc0, arc1, arc2, arc3]);
     fixPolarFaces(cellid, [arc0, arc1, arc2, arc3]);
@@ -257,7 +217,7 @@ const getCellVisualization = (union: s2.CellUnion): FeatureCollection => {
 function App() {
   let map: maplibregl.Map;
   let draw: TerraDraw;
-  let regionCoverer: s2.RegionCoverer;
+  let regionCoverer: geojson.RegionCoverer;
 
   const [maxLevel, setMaxLevel] = createSignal(30);
   const [maxCells, setMaxCells] = createSignal(200);
@@ -314,7 +274,7 @@ function App() {
   };
 
   createEffect(() => {
-    regionCoverer = new s2.RegionCoverer({
+    regionCoverer = new geojson.RegionCoverer({
       maxLevel: maxLevel(),
       maxCells: maxCells(),
     });
@@ -498,14 +458,11 @@ function App() {
         console.error("secret keyboard shortcut activated!!");
         if (!navigator?.clipboard) throw new Error("clipboard API unavailable");
         const clip = await navigator.clipboard.readText();
-        const polygon = JSON.parse(clip);
-        if (polygon?.type !== "Feature") {
+        const feature = JSON.parse(clip);
+        if (feature?.type !== "Feature") {
           throw new Error("invalid feature");
         }
-        if (polygon?.geometry?.type !== "Polygon") {
-          throw new Error("invalid polygon");
-        }
-        const covering = getCovering(regionCoverer, [polygon]);
+        const covering = getCovering(regionCoverer, [feature]);
         displayCovering(covering);
       } catch (e) {
         console.error("clipboard paste failed");
