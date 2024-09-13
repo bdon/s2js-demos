@@ -52,9 +52,8 @@ const getCovering = (
   coverer: geojson.RegionCoverer,
   features: Feature[],
 ): s2.CellUnion => {
-  return s2.CellUnion.fromUnion(
-    ...features.map((f) => coverer.covering(f.geometry)),
-  );
+  if (features.length > 1) throw new Error("multi-feature unsupported");
+  return coverer.covering(features[0].geometry);
 };
 
 // We adjust the lines from great-circle to have lng > 180 and < -180 so that
@@ -219,6 +218,7 @@ function App() {
   let draw: TerraDraw;
   let regionCoverer: geojson.RegionCoverer;
 
+  const [minLevel, setMinLevel] = createSignal(0);
   const [maxLevel, setMaxLevel] = createSignal(30);
   const [maxCells, setMaxCells] = createSignal(200);
   const [drawMode, setDrawMode] = createSignal("");
@@ -275,6 +275,7 @@ function App() {
 
   createEffect(() => {
     regionCoverer = new geojson.RegionCoverer({
+      minLevel: minLevel(),
       maxLevel: maxLevel(),
       maxCells: maxCells(),
     });
@@ -496,6 +497,18 @@ function App() {
               value={maxCells()}
               onInput={(e) => {
                 setMaxCells(+e.target.value || 1);
+              }}
+            />
+          </div>
+          <div class="input">
+            <div class="label">
+              <label>min level:</label>
+            </div>
+            <input
+              type="text"
+              value={minLevel()}
+              onInput={(e) => {
+                setMinLevel(+e.target.value || 1);
               }}
             />
           </div>
