@@ -449,10 +449,7 @@ function App() {
       if (e.type != "keydown") return;
 
       // cntrl + shift + v
-      if (Object.keys(keyMap).length !== 3) return;
-      if (!keyMap["ControlLeft"] || !keyMap["ShiftLeft"] || !keyMap["KeyV"]) {
-        return;
-      }
+      if (!["ControlLeft", "ShiftLeft", "KeyV"].every((c) => keyMap[c])) return;
 
       try {
         console.error("secret keyboard shortcut activated!!");
