@@ -505,7 +505,10 @@ function App() {
               <label>min level:</label>
             </div>
             <input
-              type="text"
+              type="number"
+              min="0"
+              max="30"
+              required
               value={minLevel()}
               onInput={(e) => {
                 setMinLevel(+e.target.value || 1);
@@ -517,7 +520,10 @@ function App() {
               <label>max level:</label>
             </div>
             <input
-              type="text"
+              type="number"
+              min="0"
+              max="30"
+              required
               value={maxLevel()}
               onInput={(e) => {
                 setMaxLevel(+e.target.value || 1);
