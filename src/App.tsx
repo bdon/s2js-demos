@@ -52,8 +52,9 @@ const getCovering = (
   coverer: geojson.RegionCoverer,
   features: Feature[],
 ): s2.CellUnion => {
-  if (features.length > 1) throw new Error("multi-feature unsupported");
-  return coverer.covering(features[0].geometry);
+  return s2.CellUnion.fromUnion(
+    ...features.map((f) => coverer.covering(f.geometry)),
+  );
 };
 
 // We adjust the lines from great-circle to have lng > 180 and < -180 so that
