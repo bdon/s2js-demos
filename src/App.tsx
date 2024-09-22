@@ -224,53 +224,94 @@ function App() {
   const [maxCells, setMaxCells] = createSignal(200);
   const [drawMode, setDrawMode] = createSignal("");
   const [cellUnionText, setCellUnionText] = createSignal("");
+  const [geojsonText] = createSignal("");
   const [cellUnionLength, setCellUnionLength] = createSignal(0);
   const [loadError, setLoadError] = createSignal("");
-  let textArea: HTMLTextAreaElement | undefined;
+  const [geojsonLoadError, setGeoJsonLoadError] = createSignal("");
 
-  const computeCoveringForDraw = () => {
-    const snapshot = draw!.getSnapshot() as Feature<Polygon>[];
-
-    const covering = getCovering(regionCoverer, snapshot);
-    displayCovering(covering);
+  // list of features currently loaded in the map view
+  const [features, setFeatures] = createSignal<Feature[]>([], {
+    equals: () => false,
+  });
+  const clearFeatures = () => setFeatures((features) => features.slice(0, 0));
+  const addFeatures = (additions: Feature[]) => {
+    setFeatures((features) => {
+      for (let feat of additions) {
+        const hash = JSON.stringify(feat);
+        const duplicate = features.some((f) => JSON.stringify(f) === hash);
+        if (!duplicate) features.push(feat);
+      }
+      return features;
+    });
   };
 
-  const displayCovering = (covering: s2.CellUnion) => {
-    (map!.getSource("covering") as maplibregl.GeoJSONSource).setData(
-      getCellVisualization(covering),
-    );
+  // re-render covering when features / tokens change
+  createEffect(() =>
+    displayCovering(getCovering(regionCoverer, features()), features()),
+  );
+
+  let textArea: HTMLTextAreaElement | undefined;
+  let jsonArea: HTMLTextAreaElement | undefined;
+
+  const displayCovering = (covering: s2.CellUnion, features?: Feature[]) => {
+    if (!map) return;
+
+    const source: maplibregl.GeoJSONSource = map.getSource("covering")!;
+    source.setData(getCellVisualization(covering));
 
     setCellUnionText([...covering].map((c) => s2.cellid.toToken(c)).join(", "));
     setCellUnionLength(covering.length);
+
+    // dont zoom if all features are from terradraw
+    if (
+      features &&
+      features.every((f) => f.id && f.id.toString().length === 36)
+    ) {
+      return;
+    }
+
+    const rect = covering.rectBound();
+    map.fitBounds(
+      [
+        [s1.angle.degrees(rect.lng.lo), s1.angle.degrees(rect.lat.lo)],
+        [s1.angle.degrees(rect.lng.hi), s1.angle.degrees(rect.lat.hi)],
+      ],
+      { padding: 50 },
+    );
   };
 
   const loadCoveringFromText = () => {
-    let rect = s2.Rect.emptyRect();
-
-    draw.clear();
     if (!textArea) return;
 
     try {
       const covering = new s2.CellUnion(
-        ...textArea.value.split(", ").map((token) => {
-          const cellid = s2.cellid.fromToken(token);
-          const cell = s2.Cell.fromCellID(cellid);
-          rect = rect.union(cell.rectBound());
-          return cellid;
-        }),
+        ...textArea.value
+          .trim()
+          .split(",")
+          .map((t) => t.trim())
+          .map(s2.cellid.fromToken),
       );
 
+      draw.clear();
+      clearFeatures();
       displayCovering(covering);
-      map.fitBounds(
-        [
-          [s1.angle.degrees(rect.lng.lo), s1.angle.degrees(rect.lat.lo)],
-          [s1.angle.degrees(rect.lng.hi), s1.angle.degrees(rect.lat.hi)],
-        ],
-        { padding: 50 },
-      );
       setLoadError("");
     } catch (e: any) {
       setLoadError(e.message);
+    }
+  };
+
+  const loadGeoJsonFromText = () => {
+    if (!jsonArea) return;
+
+    try {
+      const feature = JSON.parse(jsonArea.value) as Feature;
+      if (feature?.type !== "Feature") throw new Error("Invalid Feature");
+      clearFeatures();
+      addFeatures([feature]);
+      setGeoJsonLoadError("");
+    } catch (e: any) {
+      setGeoJsonLoadError(e.message.split(":")[0]);
     }
   };
 
@@ -280,14 +321,12 @@ function App() {
       maxLevel: maxLevel(),
       maxCells: maxCells(),
     });
-    if (draw) {
-      computeCoveringForDraw();
-    }
+    displayCovering(getCovering(regionCoverer, features()), features());
   });
 
   const clear = () => {
     draw.clear();
-    computeCoveringForDraw();
+    clearFeatures();
     startDrawMode("rectangle");
   };
 
@@ -337,7 +376,7 @@ function App() {
 
     draw.on("finish", () => {
       startDrawMode("render");
-      computeCoveringForDraw();
+      addFeatures(draw.getSnapshot());
     });
 
     draw.start();
@@ -443,31 +482,6 @@ function App() {
         );
       }
     });
-
-    // secret paste polygon from clipboard command
-    var keyMap: { [name: string]: boolean } = {};
-    window.onkeydown = window.onkeyup = async (e) => {
-      keyMap[e.code] = e.type == "keydown";
-      if (e.type != "keydown") return;
-
-      // cntrl + shift + v
-      if (!["ControlLeft", "ShiftLeft", "KeyV"].every((c) => keyMap[c])) return;
-
-      try {
-        console.error("secret keyboard shortcut activated!!");
-        if (!navigator?.clipboard) throw new Error("clipboard API unavailable");
-        const clip = await navigator.clipboard.readText();
-        const feature = JSON.parse(clip);
-        if (feature?.type !== "Feature") {
-          throw new Error("invalid feature");
-        }
-        const covering = getCovering(regionCoverer, [feature]);
-        displayCovering(covering);
-      } catch (e) {
-        console.error("clipboard paste failed");
-        console.error(e);
-      }
-    };
   });
 
   return (
@@ -538,7 +552,16 @@ function App() {
             ) : (
               <span>{cellUnionLength()} cells</span>
             )}
-            <button onClick={loadCoveringFromText}>Load Text</button>
+            <button onClick={loadCoveringFromText}>Load Tokens</button>
+          </div>
+          <textarea ref={jsonArea} rows="5" value={geojsonText()}></textarea>
+          <div class="textarealabel">
+            {geojsonLoadError() ? (
+              <span>{geojsonLoadError()}</span>
+            ) : (
+              <span></span>
+            )}
+            <button onClick={loadGeoJsonFromText}>Load GeoJSON</button>
           </div>
         </div>
         <div class="text">
