@@ -355,7 +355,7 @@ function App() {
 
     map = new maplibregl.Map({
       container: "map",
-      style: `https://api.protomaps.com/styles/v4/${basemapTheme}/en.json?key=5b9c1298c2eef269`,
+      style: `https://api.protomaps.com/styles/v5/${basemapTheme}/en.json?key=5b9c1298c2eef269`,
       maplibreLogo: true,
     });
 
