@@ -482,6 +482,7 @@ function App() {
         );
       }
     });
+    map.resize();
   });
 
   return (
